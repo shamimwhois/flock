@@ -134,6 +134,13 @@ All API routes require existing local API authentication. Browser exchange is th
 5. Optional phpMyAdmin and pgAdmin integrations.
 6. Security regression tests, cross-platform CI and documentation.
 
+
+## Planning and design pack
+
+Detailed pre-implementation documents are maintained in [docs/database-admin/README.md](./database-admin/README.md). Review the product requirements, UI/UX design, architecture, file-by-file code structure, API contracts, threat model and test/delivery plan before starting implementation.
+
+Implementation must not begin until the Adminer packaging/runtime strategy and cross-platform credential-vault approach are validated. The detailed documents define proposed files and responsibilities; they do not claim those files have been implemented.
+
 ## Out of scope
 - Publicly hosting database administration.
 - Exposing database credentials through MCP by default.
