@@ -1,0 +1,193 @@
+package databaseadmin
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+)
+
+const (
+	sessionCookieName = "__Host-flock_dbadmin"
+	sessionTTL        = 30 * time.Minute
+	maxExchangeBody   = 4 << 10
+)
+
+var ErrInvalidSession = errors.New("invalid or expired database admin session")
+
+type sessionRecord struct {
+	scope     LaunchScope
+	expiresAt time.Time
+}
+
+// SessionStore stores only digests of opaque browser session tokens.
+type SessionStore struct {
+	mu       sync.Mutex
+	sessions map[[sha256.Size]byte]sessionRecord
+	now      func() time.Time
+}
+
+func NewSessionStore() *SessionStore {
+	return &SessionStore{sessions: make(map[[sha256.Size]byte]sessionRecord), now: time.Now}
+}
+
+func (s *SessionStore) create(scope LaunchScope) (string, error) {
+	if !validScope(scope) {
+		return "", ErrInvalidScope
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw)
+	digest := sha256.Sum256([]byte(token))
+	now := s.now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, record := range s.sessions {
+		if !now.Before(record.expiresAt) {
+			delete(s.sessions, key)
+		}
+	}
+	s.sessions[digest] = sessionRecord{scope: scope, expiresAt: now.Add(sessionTTL)}
+	return token, nil
+}
+
+func (s *SessionStore) lookup(token string) (LaunchScope, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(raw) != 32 {
+		return LaunchScope{}, ErrInvalidSession
+	}
+	digest := sha256.Sum256([]byte(token))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.sessions[digest]
+	if !ok {
+		return LaunchScope{}, ErrInvalidSession
+	}
+	if !s.now().Before(record.expiresAt) {
+		delete(s.sessions, digest)
+		return LaunchScope{}, ErrInvalidSession
+	}
+	return record.scope, nil
+}
+
+func (s *SessionStore) revoke(token string) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil || len(raw) != 32 {
+		return
+	}
+	digest := sha256.Sum256([]byte(token))
+	s.mu.Lock()
+	delete(s.sessions, digest)
+	s.mu.Unlock()
+}
+
+// ExchangeHandler exchanges a one-time launch ticket for an opaque HttpOnly session cookie.
+// expectedHost must be the exact host:port bound by the dedicated loopback listener.
+func ExchangeHandler(tickets *TicketStore, sessions *SessionStore, expectedHost string) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /session/exchange", func(w http.ResponseWriter, r *http.Request) {
+		setSecurityHeaders(w)
+		if !isLoopbackRequest(r) || r.Host != expectedHost || !validOrigin(r, expectedHost) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
+			return
+		}
+
+		var body struct {
+			Ticket string `json:"ticket"`
+		}
+		decoder := json.NewDecoder(io.LimitReader(r.Body, maxExchangeBody))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&body); err != nil || body.Ticket == "" {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+
+		scope, err := tickets.Consume(body.Ticket)
+		if err != nil {
+			http.Error(w, "invalid or expired launch ticket", http.StatusUnauthorized)
+			return
+		}
+		session, err := sessions.create(scope)
+		if err != nil {
+			http.Error(w, "could not create session", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name: sessionCookieName, Value: session, Path: "/", HttpOnly: true,
+			Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+			MaxAge: int(sessionTTL.Seconds()), Expires: time.Now().Add(sessionTTL),
+		})
+		w.WriteHeader(http.StatusNoContent)
+	})
+	return mux
+}
+
+// SessionScope returns the authorization scope attached to a valid browser session.
+func SessionScope(sessions *SessionStore, r *http.Request) (LaunchScope, error) {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return LaunchScope{}, ErrInvalidSession
+	}
+	return sessions.lookup(cookie.Value)
+}
+
+// RevokeSession invalidates the current browser session and expires its cookie.
+func RevokeSession(sessions *SessionStore, w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookieName); err == nil {
+		sessions.revoke(cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: "", Path: "/", HttpOnly: true,
+		Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
+		MaxAge: -1, Expires: time.Unix(1, 0),
+	})
+	setSecurityHeaders(w)
+}
+
+func isLoopbackRequest(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func validOrigin(r *http.Request, expectedHost string) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" || strings.Contains(origin, ",") {
+		return false
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return origin == scheme+"://"+expectedHost
+}
+
+func setSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+}
