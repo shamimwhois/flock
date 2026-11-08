@@ -28,7 +28,7 @@ func TestExchangeCreatesScopedHttpOnlySession(t *testing.T) {
 		t.Fatal(err)
 	}
 	const host = "127.0.0.1:43127"
-	handler := ExchangeHandler(tickets, sessions, host)
+	handler := ExchangeHandler(tickets, NewSessionStore(), host)
 	response := exchangeRequest(handler, host, "http://"+host, "127.0.0.1:54321", ticket)
 
 	if response.Code != http.StatusNoContent {
