@@ -3,8 +3,8 @@ package databaseadmin
 import (
 	"net/http"
 	"net/http/httptest"
-	"testing"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -74,7 +74,7 @@ func TestExchangeRejectsUntrustedOriginWithoutConsumingTicket(t *testing.T) {
 }
 
 func TestExchangeRejectsNonLoopbackPeerAndHostMismatch(t *testing.T) {
-	tickets, sessions := NewTicketStore(), NewSessionStore()
+	tickets := NewTicketStore()
 	const host = "127.0.0.1:43129"
 	handler := ExchangeHandler(tickets, sessions, host)
 
