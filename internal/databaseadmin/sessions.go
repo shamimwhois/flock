@@ -25,7 +25,6 @@ var ErrInvalidSession = errors.New("invalid or expired database admin session")
 
 type sessionRecord struct {
 	scope     LaunchScope
-	createdAt time.Time
 	lastSeenAt time.Time
 	expiresAt time.Time
 }
@@ -60,7 +59,7 @@ func (s *SessionStore) create(scope LaunchScope) (string, error) {
 			delete(s.sessions, key)
 		}
 	}
-	s.sessions[digest] = sessionRecord{scope: scope, createdAt: now, lastSeenAt: now, expiresAt: now.Add(sessionAbsoluteTTL)}
+	s.sessions[digest] = sessionRecord{scope: scope, lastSeenAt: now, expiresAt: now.Add(sessionAbsoluteTTL)}
 	return token, nil
 }
 
