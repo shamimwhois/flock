@@ -108,8 +108,22 @@ func TestSessionExpiryAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	now = now.Add(sessionTTL)
+	now = now.Add(sessionAbsoluteTTL)
 	if _, err := store.lookup(token); err != ErrInvalidSession {
 		t.Fatalf("lookup after expiry error = %v, want ErrInvalidSession", err)
+	}
+}
+
+func TestSessionIdleExpiryIsNotExtendedBeyondAbsoluteLifetime(t *testing.T) {
+	store := NewSessionStore()
+	now := time.Date(2026, time.November, 8, 12, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	token, err := store.create(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(sessionIdleTTL)
+	if _, err := store.lookup(token); err != ErrInvalidSession {
+		t.Fatalf("lookup after idle timeout error = %v, want ErrInvalidSession", err)
 	}
 }
