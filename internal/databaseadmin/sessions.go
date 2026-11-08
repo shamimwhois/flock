@@ -168,6 +168,25 @@ func RevokeSession(sessions *SessionStore, w http.ResponseWriter, r *http.Reques
 	setSecurityHeaders(w)
 }
 
+ 
+// ScopedHandler serves a request only when it comes from the loopback peer, uses the exact
+// listener Host, and carries a live server-side session. The scope is supplied out-of-band.
+func ScopedHandler(sessions *SessionStore, expectedHost string, next func(http.ResponseWriter, *http.Request, LaunchScope)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setSecurityHeaders(w)
+		if !isLoopbackRequest(r) || r.Host != expectedHost {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		scope, err := SessionScope(sessions, r)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r, scope)
+	})
+}
+
 func isLoopbackRequest(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
