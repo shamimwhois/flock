@@ -28,7 +28,7 @@ func TestExchangeCreatesScopedHttpOnlySession(t *testing.T) {
 		t.Fatal(err)
 	}
 	const host = "127.0.0.1:43127"
-	handler := ExchangeHandler(tickets, NewSessionStore(), host)
+	handler := ExchangeHandler(tickets, sessions, host)
 	response := exchangeRequest(handler, host, "http://"+host, "127.0.0.1:54321", ticket)
 
 	if response.Code != http.StatusNoContent {
@@ -76,7 +76,7 @@ func TestExchangeRejectsUntrustedOriginWithoutConsumingTicket(t *testing.T) {
 func TestExchangeRejectsNonLoopbackPeerAndHostMismatch(t *testing.T) {
 	tickets := NewTicketStore()
 	const host = "127.0.0.1:43129"
-	handler := ExchangeHandler(tickets, sessions, host)
+	handler := ExchangeHandler(tickets, NewSessionStore(), host)
 
 	if got := exchangeRequest(handler, host, "http://"+host, "192.0.2.10:1234", ""); got.Code != http.StatusForbidden {
 		t.Fatalf("remote peer status = %d, want 403", got.Code)
