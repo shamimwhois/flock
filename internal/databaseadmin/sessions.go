@@ -109,7 +109,7 @@ func ExchangeHandler(tickets *TicketStore, sessions *SessionStore, expectedHost 
 		var body struct {
 			Ticket string `json:"ticket"`
 		}
-		decoder := json.NewDecoder(io.LimitReader(r.Body, maxExchangeBody))
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxExchangeBody))
 		decoder.DisallowUnknownFields()
 		if err := decoder.Decode(&body); err != nil || body.Ticket == "" {
 			http.Error(w, "invalid request", http.StatusBadRequest)
