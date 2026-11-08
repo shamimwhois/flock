@@ -98,3 +98,41 @@ Before adding any dependency:
 3. Pin versions and update lockfiles.
 4. Document why the standard library/current dependencies are insufficient.
 5. Add tests and CI coverage for the dependency's failure modes.
+
+
+## 8. Source-audited integration points (2026-11-08)
+
+This section supersedes any assumption that the proposed file list above is already implemented. The following existing source files were fetched from the feature branch and inspected:
+
+| Platform | Confirmed existing integration point | Reuse requirement |
+|---|---|---|
+| macOS | `macos/Sources/FlockUI/PanelView.swift` | Add a compact global action using the existing SwiftUI section/row/shortcut style; do not replace the panel. |
+| macOS | `macos/Sources/FlockUI/AppModel.swift` | Extend the existing shared observable state and existing `FlockClient`; do not create a second polling/state owner. |
+| macOS | `macos/Sources/FlockUI/WebView.swift` | Keep Adminer out of this HTML viewer; open the loopback URL in the system browser. |
+| Linux | `linux/src/panes/sites.rs` | Add the per-site Database section to the existing site detail rendering path and preserve the existing stack/list/detail lifecycle. |
+| Linux | `linux/src/panes/services.rs` | Do not model Adminer as a database server or add it to the DB service catalog. |
+| Linux | `linux/src/panes/common.rs` | Reuse `PaneView`, `group`, `info_row`, `open_row`, `status_dot` and `report` conventions. |
+| Windows | `windows/Flock.Tray/PanelWindow.xaml` | Reuse existing XAML resource styles, `InfoBar`, row spacing and binding patterns for global entry point. |
+| Windows | `windows/Flock.Tray/PanelWindow.xaml.cs` | Preserve tray panel lifecycle/size/hide behavior; do not turn the flyout into the Adminer browser. |
+| Windows | `windows/Flock.Tray/FlockWindow.xaml.cs` | Use existing native window chrome if a dedicated configuration/details window is genuinely needed. |
+
+### Exact UI work still pending
+
+- macOS: inspect the Settings/site detail composition and the client API models; identify the exact view that owns selected-site details before adding the database section.
+- Linux: finish tracing the remainder of `SitesPane::render_detail`, site model/config data flow, app navigation actions and the HTTP client conventions.
+- Windows: inspect the complete `Features`, `ViewModels`, `Controls`, `Flock.Kit` client/model and site detail composition; the tray panel alone does not establish the site's detail page.
+- All platforms: add global entry point, site-scoped connection selector/metadata, test action, launch state, safe errors, empty state and accessibility using native conventions.
+
+No platform UI feature code has been added in this pass. The source audit is partial and does not establish that the per-site page integration is complete.
+
+## 9. Runtime platform implementation boundary
+
+The shared Go service owns discovery, validation, connection checks, tickets, sessions, Adminer artifact verification and authorization. Platform clients must not implement their own database discovery or credential parsing.
+
+- macOS/Linux runtime adapter: dedicated supervised PHP-FPM master/pool, private Unix socket, Adminer-only INI/session directory, plus an independently managed loopback HTTP listener.
+- Windows runtime adapter: dedicated supervised PHP-CGI FastCGI worker pool on loopback, private PHPRC and PHP_INI_SCAN_DIR, plus the same independently managed loopback HTTP listener.
+- Both adapters must use the existing managed PHP installation and supervisor lifecycle. Neither may borrow a site's pool, site PHP version, project INI, public Caddy routes or site environment.
+- The daemon owns one platform-neutral manager interface; OS-specific process specs are isolated behind platform-specific files/build constraints. Do not fork the business logic by OS.
+- A listener handle must be bound before returning a launch URL. Readiness requires both HTTP listener and FastCGI workers healthy. Shutdown/restart must stop both and revoke tickets/sessions.
+- Platform adapters are not considered implemented until integration tests prove process startup, readiness, request concurrency, timeout, crash recovery, cleanup and no leaked processes on each supported OS.
+
