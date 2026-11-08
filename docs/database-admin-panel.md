@@ -12,9 +12,25 @@ Target: Flock native applications on macOS, Windows and Linux
 6. Keep the database administration service local-only and independently stoppable.
 
 ## User experience
-Each site row/detail view gains a Database section showing engine, database name, host, port, username, source and connection status. Passwords are always masked. Never expose raw connection URLs or DSNs.
+Every site's existing site sidebar/details sidebar must contain a dedicated **Database** section alongside the site's URL and project information. This is a per-site control, not only a global database page. The section displays the detected database engine, database name, host, port, database/admin username, configuration source and live connection status. Passwords are masked and are never rendered as plain text. Never expose raw connection URLs or DSNs.
 
-- Open Adminer opens the browser at a Flock-owned loopback URL.
+### Per-site sidebar layout and interaction
+- Keep the existing Site Information (site name, local URL, project path and site status) visible.
+- Add a Database Information block directly in that same site's sidebar: engine badge, database name, host:port, username and connection status.
+- Add a prominent **Database Admin Login** button in the Database block. The button launches the browser-based admin tool for that exact site's selected connection; it must not merely navigate to a generic Flock settings page.
+- On click, Flock validates the selected connection, starts or reuses the local admin-panel service, issues a short-lived one-time launch ticket, waits until the listener is ready, and opens the system default browser. The browser then lands in the authenticated Adminer/phpMyAdmin/pgAdmin session for that connection.
+- If multiple connections are detected, show a compact connection selector and make the selected connection explicit before launching. The button label may include the selected engine/tool, e.g. **Open PostgreSQL Admin**.
+- If no database is detected, show **No database detected** and a safe **Configure connection** action. If detection is ambiguous or the connection test fails, explain the issue and allow the user to select/edit a local-only profile.
+- Provide a secondary **Test Connection** action and a panel stop/close action while the panel is running.
+- Never put passwords, full DSNs or credentials in the sidebar URL, browser URL, clipboard by default, logs, MCP output or telemetry.
+
+### Expected click flow
+1. User selects a site and sees its Site URL plus Database Information in the site's sidebar.
+2. User clicks **Database Admin Login**.
+3. Flock resolves that site's selected connection and performs a safe connection check.
+4. Flock launches/reuses the loopback-only admin service and opens the browser.
+5. The admin tool opens already associated with the selected database connection, without asking the user to paste credentials into a URL or exposing the password in the UI.
+
 - Copy connection details copies host, port, database and username only by default.
 - Multiple connections are shown as a selectable list.
 - If configuration is missing or ambiguous, offer a manual profile without writing secrets into the project.
