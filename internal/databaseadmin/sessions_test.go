@@ -127,3 +127,43 @@ func TestSessionIdleExpiryIsNotExtendedBeyondAbsoluteLifetime(t *testing.T) {
 		t.Fatalf("lookup after idle timeout error = %v, want ErrInvalidSession", err)
 	}
 }
+
+func TestScopedHandlerRequiresLoopbackHostAndLiveSession(t *testing.T) {
+	sessions := NewSessionStore()
+	scope := LaunchScope{Kind: SiteScope, SiteID: "site-x", ConnectionID: "pg-x"}
+	token, err := sessions.create(scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const host = "127.0.0.1:43131"
+	var servedScope LaunchScope
+	handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, _ *http.Request, got LaunchScope) {
+		servedScope = got
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	request := func(requestHost, remote, cookie string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "http://"+requestHost+"/", nil)
+		req.Host = requestHost
+		req.RemoteAddr = remote
+		if cookie != "" {
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: cookie})
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	if got := request(host, "127.0.0.1:54321", ""); got.Code != http.StatusUnauthorized {
+		t.Fatalf("missing session status = %d, want 401", got.Code)
+	}
+	if got := request(host, "192.0.2.1:54321", token); got.Code != http.StatusForbidden {
+		t.Fatalf("non-loopback status = %d, want 403", got.Code)
+	}
+	if got := request("127.0.0.1:43132", "127.0.0.1:54321", token); got.Code != http.StatusForbidden {
+		t.Fatalf("wrong Host status = %d, want 403", got.Code)
+	}
+	if got := request(host, "127.0.0.1:54321", token); got.Code != http.StatusNoContent || servedScope != scope {
+		t.Fatalf("authorized request = %d, scope %#v", got.Code, servedScope)
+	}
+}
