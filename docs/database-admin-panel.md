@@ -35,6 +35,27 @@ Every site's existing site sidebar/details sidebar must contain a dedicated **Da
 - Multiple connections are shown as a selectable list.
 - If configuration is missing or ambiguous, offer a manual profile without writing secrets into the project.
 
+
+## Global database administration
+Database administration is available in two complementary entry points:
+
+1. **Global Database Admin** — a persistent application-level action in the main/global navigation. It opens the standalone Adminer landing/login page in the system browser. It is not bound to a site or an automatically selected site's credentials. The user can directly enter/select an authorized database server and administrator credentials in the browser. This is the direct/global admin experience.
+2. **Per-site Database Admin Login** — an action inside each site's own sidebar/details panel. It opens the admin tool already targeted at the database connection detected or configured for that specific site.
+
+The global entry point must remain available even when no site is selected, no site exists, or the selected site has no detected database. The per-site entry point must never silently fall back to the global/default connection: it must use that site's selected connection identifier and clearly report missing, ambiguous, or unreachable configuration.
+
+The global and per-site entry points may share the same local Adminer service/runtime, but they must use distinct launch intents and authorization flows. Global launch opens the generic login screen and does not inject a site's credentials. Per-site launch uses the selected site's connection and the secure one-time ticket/session handoff described below. Optional phpMyAdmin and pgAdmin global shortcuts may be shown only when those tools are installed/enabled; the global default remains Adminer.
+
+### Global vs per-site behavior matrix
+| Capability | Global Database Admin | Site sidebar Database Admin Login |
+|---|---|---|
+| Location | Main application navigation | Each individual site's sidebar |
+| Site required | No | Yes |
+| Database target | User selects/enters target in admin tool | Automatically targets that site's selected connection |
+| Credentials | User enters administrator credentials in browser | Uses that site's configured credentials through protected server-side session handoff |
+| No site/database config | Still opens generic admin login | Shows configure/detection guidance; does not open another site's DB |
+| Browser action | Opens global admin login page | Opens the selected site's database admin session |
+
 ## Engine and project detection
 - Laravel dotenv: DB_CONNECTION, DB_HOST, DB_PORT, DB_DATABASE, DB_USERNAME, DB_PASSWORD and DATABASE_URL.
 - Parse dotenv syntax conservatively; do not execute PHP or evaluate Laravel config files.
