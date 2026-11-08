@@ -16,7 +16,8 @@ import (
 
 const (
 	sessionCookieName = "flock_dbadmin_session"
-	sessionTTL        = 30 * time.Minute
+	sessionIdleTTL    = 15 * time.Minute
+	sessionAbsoluteTTL = 2 * time.Hour
 	maxExchangeBody   = 4 << 10
 )
 
@@ -24,6 +25,8 @@ var ErrInvalidSession = errors.New("invalid or expired database admin session")
 
 type sessionRecord struct {
 	scope     LaunchScope
+	createdAt time.Time
+	lastSeenAt time.Time
 	expiresAt time.Time
 }
 
@@ -57,7 +60,7 @@ func (s *SessionStore) create(scope LaunchScope) (string, error) {
 			delete(s.sessions, key)
 		}
 	}
-	s.sessions[digest] = sessionRecord{scope: scope, expiresAt: now.Add(sessionTTL)}
+	s.sessions[digest] = sessionRecord{scope: scope, createdAt: now, lastSeenAt: now, expiresAt: now.Add(sessionAbsoluteTTL)}
 	return token, nil
 }
 
@@ -73,10 +76,13 @@ func (s *SessionStore) lookup(token string) (LaunchScope, error) {
 	if !ok {
 		return LaunchScope{}, ErrInvalidSession
 	}
-	if !s.now().Before(record.expiresAt) {
+	now := s.now()
+	if !now.Before(record.expiresAt) || now.Sub(record.lastSeenAt) >= sessionIdleTTL {
 		delete(s.sessions, digest)
 		return LaunchScope{}, ErrInvalidSession
 	}
+	record.lastSeenAt = now
+	s.sessions[digest] = record
 	return record.scope, nil
 }
 
@@ -134,7 +140,7 @@ func ExchangeHandler(tickets *TicketStore, sessions *SessionStore, expectedHost 
 		http.SetCookie(w, &http.Cookie{
 			Name: sessionCookieName, Value: session, Path: "/", HttpOnly: true,
 			Secure: r.TLS != nil, SameSite: http.SameSiteStrictMode,
-			MaxAge: int(sessionTTL.Seconds()), Expires: time.Now().Add(sessionTTL),
+			MaxAge: int(sessionAbsoluteTTL.Seconds()), Expires: time.Now().Add(sessionAbsoluteTTL),
 		})
 		w.WriteHeader(http.StatusNoContent)
 	})
