@@ -25,9 +25,10 @@ A per-site launch must never silently fall back to the global login or another s
 | [Code structure](./04-code-structure.md) | Proposed files/packages and file-by-file responsibilities |
 | [API & data contracts](./05-api-and-data-contracts.md) | Endpoints, request/response models, sanitized metadata and errors |
 | [Security threat model](./06-security-threat-model.md) | Secrets, ticket exchange, local listener, abuse cases and mitigations |
-| [Testing & delivery plan](./07-testing-and-delivery.md) | Test matrix, implementation phases, CI gates and definition of done |
+| [Testing & delivery plan](./07-testing-and-delivery.md) | Test matrix, CI gates and rollout phases |
 | [Technical feasibility](./08-technical-feasibility.md) | Existing PHP runtime, Adminer packaging, platform constraints and Phase 0 proof-of-concept gates |
 | [Runtime design decision](./09-runtime-design-decision.md) | Source-verified PHP/FastCGI capabilities, selected isolated runtime direction and remaining proof gates |
+| [Adminer authentication & URL safety](./10-adminer-authentication-url-safety.md) | Upstream authentication flow, URL leakage constraint, required compatibility patch and regression tests |
 
 ## Existing repository integration points inspected
 
