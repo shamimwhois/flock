@@ -94,3 +94,45 @@ This is a source-backed architecture decision, not a runtime prototype report. T
 ## 7. Phase gate
 
 **Phase 0 remains open.** No application feature code has been added, no runtime prototype has been executed, and no application tests or CI checks have been run in this pass. Feature implementation must not start until the remaining gates are recorded with platform-specific evidence and the listener transport is frozen.
+
+
+## 8. Platform-specific execution cases and acceptance criteria
+
+The source review establishes that the host Flock PHP managers can support the proposed execution models. It does **not** establish that a dedicated Adminer runtime already exists. The implementation must preserve the following distinct OS behavior.
+
+### macOS and Linux — dedicated PHP-FPM
+
+1. Select a compatible Flock-managed PHP minor independently of the selected site's PHP.
+2. Generate a private Adminer-only FPM configuration and INI; use a private Unix socket under the protected Flock runtime directory.
+3. Run a dedicated FPM master/pool under the existing supervisor. Do not attach Adminer to a site's FPM pool.
+4. Create a private session directory with owner-only permissions and an isolated temporary directory.
+5. Start a dedicated HTTP listener bound explicitly to IPv4 loopback. The listener must not be part of the normal public Caddy site route table.
+6. Verify socket ownership/mode, worker identity, listener address, readiness, restart and shutdown behavior.
+7. Confirm macOS launch-agent shutdown and Linux daemon/service shutdown both clean up the listener, FPM master/workers, tickets and sessions.
+
+### Windows — dedicated PHP-CGI FastCGI pool
+
+1. Select a compatible Flock-managed PHP minor independently of any site's PHP selection.
+2. Generate private Adminer PHPRC and PHP_INI_SCAN_DIR locations; do not inherit project or user PHP configuration.
+3. Start a dedicated set of supervised `php-cgi.exe` workers, bound only to loopback using OS-assigned ports. Do not reuse the six-worker site pool or its environment.
+4. Use a private session/temp directory with restrictive Windows ACLs; verify the effective worker identity and file access.
+5. Start a separate loopback HTTP listener and verify it cannot be reached through public site routes, sharing or tunnels.
+6. Verify worker replacement after crash, bounded concurrency, request timeout, clean stop and file-unlock behavior during PHP package update/replacement.
+7. On daemon shutdown/restart, stop every Adminer worker/listener and revoke all tickets/sessions.
+
+### Shared acceptance matrix
+
+| Proof | macOS | Linux | Windows |
+|---|---|---|---|
+| Dedicated managed PHP runtime | Not run | Not run | Not run |
+| Private INI and extension probe | Not run | Not run | Not run |
+| Private session storage permissions | Not run | Not run | Not run |
+| Loopback-only HTTP listener | Not run | Not run | Not run |
+| FastCGI worker readiness/concurrency | Not run | Not run | Not run |
+| Crash/restart/clean shutdown | Not run | Not run | Not run |
+| Public Caddy/share/tunnel isolation | Not run | Not run | Not run |
+| Adminer auth URL-safety integration | Not run | Not run | Not run |
+
+### Phase status
+
+Architecture mapping is documented; runtime implementation and all platform execution proofs remain **not started / not verified**. Do not mark macOS, Linux or Windows runtime as passed until CI or reproducible platform test evidence is attached. A source-level presence of PHP-FPM/php-cgi support is not a runtime pass.
