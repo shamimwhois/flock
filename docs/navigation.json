@@ -39,7 +39,8 @@
       { "slug": "dumps", "title": "Dumps" },
       { "slug": "xdebug", "title": "Xdebug" },
       { "slug": "logs", "title": "Logs" },
-      { "slug": "ai", "title": "AI agents" }
+      { "slug": "ai", "title": "AI agents" },
+      { "slug": "database-admin-panel", "title": "Database administration" }
     ]
   },
   {
