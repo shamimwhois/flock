@@ -17,26 +17,38 @@ Do **not** assume that an Adminer plugin implementing only `credentials()` solve
 
 **Decision:** ship a pinned Adminer build with a small, reviewed Flock compatibility patch (or an equivalent upstream-supported mechanism only if proven by an executable test). The browser URL must remain a clean path with no database identity or credentials. The patch must map a server-side Flock session context to Adminer's driver, server, username and database state internally, without trusting browser-supplied connection parameters.
 
-## 2. Upstream source observations
+## 2. Exact upstream version inspected
 
-Reviewed upstream Adminer documentation and source pages:
+The current official Adminer download page lists **Adminer 6.3.0**, released 2026-11-03. The Packagist source metadata identifies the upstream source commit as:
 
-- `docs/developing.md` describes driver selection from URL parameters such as `pgsql=`, authentication when `username=` is present, and POST/CSRF handling for state-changing actions.
-- `adminer/include/auth.inc.php` checks `isset($_GET["username"])` before connecting. It then calls `adminer()->credentials()`, but only after that URL-gated branch has been entered.
-- The same authentication file constructs a redirect using `auth_url($vendor, $server, $username, $db)` after login, so the normal flow continues to put connection identity in the URL.
-- `adminer/include/functions.inc.php` stores the password in the PHP session (encrypted using the Adminer key cookie) but scopes session entries by driver, server and username values derived from request state.
-- Adminer documents a SameSite cookie and CSRF token approach and describes rejecting cross-site POST requests using `Sec-Fetch-Site`. Flock must retain its own Origin/Host/peer checks; SameSite alone is not sufficient.
-- The official plugin catalogue lists several login plugins, but the existence of a plugin is not proof that it supports Flock's no-connection-data-in-URL requirement.
+- Version: `6.3.0`
+- Upstream commit: `6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1`
+- Reviewed file: `adminer/include/auth.inc.php`
+- Reviewed file blob SHA: `0fe8d1f4d511cbc81b8c72fa6c37dee1e0da029f`
+
+This is an exact commit-pinned source inspection, not merely a review of the moving `main` branch. Before shipping, the artifact still needs its own downloaded-byte SHA-256, license/NOTICE verification and signed-manifest entry.
+
+## 3. Upstream source observations
+
+At the exact 6.3.0 commit:
+
+- `auth.inc.php` processes login POST data and stores the submitted password using `set_password()` in the PHP session.
+- It then calls `auth_url($vendor, $server, $username, $db)` when the login needs a redirect. This URL builder carries the driver/server/username/database identity.
+- The authenticated request path is gated by `isset($_GET["username"])` and `is_string(get_password())`.
+- Only after that URL-gated branch does Adminer call `adminer()->credentials()` and establish the DB connection.
+- The same file's logout path clears Adminer session keys and redirects.
+- Adminer's functions source scopes session state by driver, server and username from request state. The password is kept server-side, but connection identity still participates in URL/session routing.
+- Adminer's developer documentation describes driver selection from URL parameters such as `pgsql=`, authentication when `username=` is present, and POST/CSRF handling for state-changing actions.
+- The official plugin catalogue lists login plugins, but a plugin's existence is not proof that it satisfies Flock's clean-URL requirement.
 
 Relevant upstream references:
-- https://github.com/vrana/adminer/blob/main/docs/developing.md
-- https://github.com/vrana/adminer/blob/main/adminer/include/auth.inc.php
-- https://github.com/vrana/adminer/blob/main/adminer/include/functions.inc.php
-- https://www.adminer.org/en/plugins/
+- Exact 6.3.0 authentication source: https://github.com/vrana/adminer/blob/6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1/adminer/include/auth.inc.php
+- Exact 6.3.0 functions source: https://github.com/vrana/adminer/blob/6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1/adminer/include/functions.inc.php
+- Developer documentation: https://github.com/vrana/adminer/blob/6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1/docs/developing.md
+- Official plugin catalogue: https://www.adminer.org/en/plugins/
+- Official download/version page: https://www.adminer.org/en/
 
-These references point to upstream main and are used for design analysis. They are not a substitute for inspecting the exact pinned release source during implementation.
-
-## 3. Why a simple plugin is insufficient
+## 4. Why a simple plugin is insufficient
 
 A plugin's `credentials()` hook can supply the connection password/host, but upstream auth flow currently gates connection processing on a URL `username` parameter. The normal login redirect also reconstructs URL parameters from the selected driver, server, username and database.
 
@@ -46,11 +58,11 @@ Therefore:
 - Rewriting URLs at the reverse-proxy layer is brittle and can break Adminer's navigation, forms, exports and redirects.
 - Passing a ticket or opaque connection ID as a query parameter is not an acceptable substitute; tickets belong in a short-lived POST exchange, not in persistent browser URLs.
 
-## 4. Required Flock compatibility behavior
+## 5. Required Flock compatibility behavior
 
 The pinned Adminer integration must provide a server-side request context with these properties:
 
-1. A clean browser path (for example `/` or `/site/<opaque-session>`) contains no host, port, driver, username, database, DSN, password, ticket or connection identifier.
+1. A clean browser path (for example `/`) contains no host, port, driver, username, database, DSN, password, ticket or connection identifier.
 2. The browser first POSTs a one-time launch ticket to the dedicated loopback listener. The listener atomically consumes it and creates a random, HttpOnly, SameSite=Strict session cookie.
 3. The server-side session stores a reference to a protected connection object. The secret-bearing connection object is never serialized into a browser cookie.
 4. On each Adminer request, the compatibility layer resolves the session and supplies the selected connection context internally.
@@ -61,11 +73,12 @@ The pinned Adminer integration must provide a server-side request context with t
 9. User-supplied Adminer URLs, query parameters or form fields cannot override the server-side site/connection scope.
 10. Adminer state-changing POST requests retain upstream CSRF checks; Flock additionally validates exact Host, Origin and loopback peer.
 
-## 5. Preferred implementation seam
+## 6. Preferred implementation seam
 
 Prefer a narrow maintained patch at the Adminer integration boundary over maintaining a broad fork:
 
-- Pin the exact upstream Adminer source/release and record its immutable commit/tag and SHA-256.
+- Pin upstream version 6.3.0 and commit `6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1`.
+- Record the exact downloaded artifact SHA-256 separately; the source commit is not the artifact checksum.
 - Apply a small patch to authentication/context resolution and URL generation, with a machine-readable patch file and tests.
 - Keep the patch isolated from database drivers, SQL rendering, export/import and the rest of Adminer.
 - Add a compatibility test that scans every generated Location header, HTML link/form action and browser-visible URL for forbidden connection fields.
@@ -73,7 +86,7 @@ Prefer a narrow maintained patch at the Adminer integration boundary over mainta
 
 A plugin-only solution may be accepted only if a proof test demonstrates all of the above against the exact pinned Adminer release. Current source inspection does not establish that.
 
-## 6. Test cases required before Phase 0 exit
+## 7. Test cases required before Phase 0 exit
 
 - Global login renders with a clean URL and no inherited site context.
 - Site launch POST exchanges a single-use ticket and redirects to a clean URL.
@@ -86,8 +99,8 @@ A plugin-only solution may be accepted only if a proof test demonstrates all of 
 - Adminer concurrent requests and exports continue to work with session locking semantics.
 - Global mode remains generic and never silently selects the last-used site.
 
-## 7. Phase gate update
+## 8. Phase gate update
 
-The upstream source review found a **material integration constraint**. The previously proposed generic one-time ticket exchange is still valid, but the Adminer handoff must not rely on stock query-string login or a credentials-only plugin.
+The exact 6.3.0 source review confirms a **material integration constraint**. The previously proposed generic one-time ticket exchange is still valid, but the Adminer handoff must not rely on stock query-string login or a credentials-only plugin.
 
-Phase 0 remains open. No Adminer patch, runtime prototype or integration test has been executed in this pass. Before implementation, pin the exact Adminer release, build the smallest compatibility patch, and run the clean-URL/session-isolation regression tests on that artifact.
+Phase 0 remains open. No Adminer patch, runtime prototype or integration test has been executed in this pass. Before implementation, build the smallest compatibility patch against the pinned source, then run the clean-URL/session-isolation regression tests on the resulting artifact.
