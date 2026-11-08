@@ -132,3 +132,27 @@ Notes:
 - Long paths and database names truncate with full value available through accessible tooltip/copy.
 - Sidebar must scroll naturally on small windows and not force horizontal scrolling.
 - Loading, empty, warning and error states must be announced to assistive technology.
+
+
+## 8. Existing Flock UI baseline — source audit
+
+The initial wireframes above are requirements, not permission to introduce a new visual system. The implementation must reuse each platform's current navigation, spacing, typography, status, error and action patterns.
+
+### macOS (confirmed)
+- The menu-bar panel is a compact SwiftUI `VStack` with `SectionTitle`, `ServiceRow`, status/error banners, and existing shortcuts in `macos/Sources/FlockUI/PanelView.swift`.
+- Shared daemon state and polling live in `AppModel`; API access is through its existing `FlockClient`.
+- `WebView` is an HTML viewer with non-persistent WebKit storage and remote-content blocking. It is not a suitable place to embed Adminer; the browser must be opened externally through the existing OS URL-opening convention.
+- Integration rule: add a compact Database Admin shortcut/section using existing SwiftUI rows and app-model/client patterns. Do not replace the panel or introduce a second navigation shell. Per-site detail placement still requires auditing the actual site settings/detail view before choosing its exact insertion point.
+
+### Linux (confirmed)
+- The Sites pane uses a `gtk::Stack` with list/detail `PaneView` instances, `adw::PreferencesGroup`, `adw::ActionRow`, shared `info_row`, `group`, `status_dot`, and banner error reporting.
+- Site detail is rendered by `linux/src/panes/sites.rs`; Services is a separate pane in `linux/src/panes/services.rs`.
+- Integration rule: put site-specific connection metadata and launch action in the existing site detail stack, using shared Adwaita row/group helpers. Do not add Adminer to the database server catalog or create a separate site-details window. A global action must be reachable independently of site selection, using the existing main-pane/navigation pattern.
+
+### Windows (confirmed)
+- The tray panel is a WinUI XAML `ScrollViewer` / `StackPanel` with existing resource styles, status rows, warning `InfoBar`, and view-model bindings in `windows/Flock.Tray/PanelWindow.xaml`.
+- `PanelWindow.xaml.cs` owns panel sizing, tray placement, theme updates, hide/show and view-model lifetime. Normal windows inherit Mica/title-bar behavior from `FlockWindow`.
+- Integration rule: use existing XAML resource styles, view-model command/binding conventions and window/browser launch abstractions. Do not create a parallel visual framework or put a large Adminer UI inside the tray flyout. Exact site-detail insertion point and shared client DTO conventions must be checked in the Windows feature/view-model tree before implementation.
+
+### Cross-platform consistency
+The feature has the same semantics on all platforms, but native controls remain native. Global launch stays independent of a selected site. Per-site launch stays within that site's existing detail surface. The browser opens externally; credentials are never rendered into a URL or embedded web view. The wireframes must be adapted to the platform's current components rather than copied literally.
