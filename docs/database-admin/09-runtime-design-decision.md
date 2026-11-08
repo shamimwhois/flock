@@ -136,3 +136,30 @@ The source review establishes that the host Flock PHP managers can support the p
 ### Phase status
 
 Architecture mapping is documented; runtime implementation and all platform execution proofs remain **not started / not verified**. Do not mark macOS, Linux or Windows runtime as passed until CI or reproducible platform test evidence is attached. A source-level presence of PHP-FPM/php-cgi support is not a runtime pass.
+
+
+## 9. Existing PHP runtime primitives — implementation constraints
+
+A deeper source pass inspected `internal/php/php.go` and `internal/supervisor/supervisor.go`. Reuse these existing primitives rather than creating a parallel process framework:
+
+- `php.FPMSpec(root, minor, extraEnv...)` and the internal `fpmSpec` already generate FPM supervisor specs, but the Adminer pool needs its own config writer because the stock helper points at the site's/user-editable `php.ini`, standard socket and standard scan directory.
+- `php.CGIPool` already creates six Windows workers on deterministic ports. It must **not** be reused as-is: Adminer requires a separately named pool, a private Adminer INI/scan directory, independently allocated ports and independent lifecycle.
+- `php.WaitReady` already waits for Unix-socket/TCP upstreams to accept connections. It is a useful transport-level primitive, but a successful TCP accept alone does not prove that FastCGI can execute a PHP request. Adminer readiness must include a bounded FastCGI probe that executes a tiny Flock-owned health script through the actual worker and validates a fixed non-secret response.
+- `supervisor.Spec` supports process name/path/args/environment/log and graceful stop. The supervisor marks a process up immediately after `cmd.Start()`; therefore its status is process-start status, not application readiness. The Adminer manager must separately gate launch responses on the FPM socket/CGI worker probes and HTTP health endpoint.
+- `supervisor.Ensure` starts asynchronously. The manager must not return a browser URL until all required processes are healthy and the dedicated HTTP listener responds successfully.
+
+### Windows port allocation correction
+
+The existing Windows pool uses deterministic ports derived from the PHP minor (for example, `CGIPort`). Do not use that formula for Adminer: it can collide with the normal PHP pool or another local process. Allocate a free loopback port for each Adminer worker, retain the chosen port list in the runtime instance, and handle the bind-close-start race by retrying allocation/start on address-in-use with a strict attempt limit. Never accept ports from API callers. The HTTP listener must bind and retain its own listener socket before advertising its address.
+
+### Required tests derived from these primitives
+
+- A supervisor process marked `Up` while the FastCGI socket is absent must not make Adminer launchable.
+- A listening TCP port that does not speak FastCGI must fail the FastCGI health probe.
+- A worker that starts late must keep launch pending until the bounded readiness deadline.
+- A crashed worker must make the runtime unhealthy and trigger supervised recovery; launch remains blocked until the worker passes its probe again.
+- Windows port collision must retry safely and must not attach Adminer to a site's worker.
+- FPM socket permissions and Windows private runtime directory ACLs must be checked, not merely assumed from config generation.
+- The Adminer HTTP health endpoint must return only a constant readiness marker and must not expose paths, process arguments, PHP configuration, connection metadata or secrets.
+
+These constraints refine the earlier readiness requirements and supersede any interpretation that a supervisor `Up` state or a successful TCP connect alone is sufficient.
