@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	sessionCookieName = "__Host-flock_dbadmin"
+	sessionCookieName = "flock_dbadmin_session"
 	sessionTTL        = 30 * time.Minute
 	maxExchangeBody   = 4 << 10
 )
