@@ -26,6 +26,7 @@ A per-site launch must never silently fall back to the global login or another s
 | [API & data contracts](./05-api-and-data-contracts.md) | Endpoints, request/response models, sanitized metadata and errors |
 | [Security threat model](./06-security-threat-model.md) | Secrets, ticket exchange, local listener, abuse cases and mitigations |
 | [Testing & delivery plan](./07-testing-and-delivery.md) | Test matrix, implementation phases, CI gates and definition of done |
+| [Technical feasibility](./08-technical-feasibility.md) | Existing PHP runtime, Adminer packaging, platform constraints and Phase 0 proof-of-concept gates |
 
 ## Existing repository integration points inspected
 
