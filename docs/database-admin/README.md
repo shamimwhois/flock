@@ -1,7 +1,7 @@
 # Database Admin — Planning & Design Pack
 
-Status: **Planning baseline — implementation not started**  
-Repository: Flock  
+Status: **Planning baseline — implementation not started**
+Repository: Flock
 Branch: `feature/database-admin-panel-security-hardening`
 
 This document set defines the product behavior, UI/UX, backend architecture, platform integration, security boundaries, file-by-file implementation responsibilities and validation plan for the Database Admin feature.
@@ -27,6 +27,7 @@ A per-site launch must never silently fall back to the global login or another s
 | [Security threat model](./06-security-threat-model.md) | Secrets, ticket exchange, local listener, abuse cases and mitigations |
 | [Testing & delivery plan](./07-testing-and-delivery.md) | Test matrix, implementation phases, CI gates and definition of done |
 | [Technical feasibility](./08-technical-feasibility.md) | Existing PHP runtime, Adminer packaging, platform constraints and Phase 0 proof-of-concept gates |
+| [Runtime design decision](./09-runtime-design-decision.md) | Source-verified PHP/FastCGI capabilities, selected isolated runtime direction and remaining proof gates |
 
 ## Existing repository integration points inspected
 
