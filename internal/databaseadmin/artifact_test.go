@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +73,74 @@ func TestVerifyArtifactRejectsSymlink(t *testing.T) {
 	sum := sha256.Sum256([]byte("artifact"))
 	if err := VerifyArtifact(link, hex.EncodeToString(sum[:])); !errors.Is(err, ErrInvalidArtifact) {
 		t.Fatalf("symlink error = %v, want ErrInvalidArtifact", err)
+	}
+}
+
+func TestVerifyArtifactDigestValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "adminer.php")
+	content := []byte("pinned artifact")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(content)
+	digest := hex.EncodeToString(sum[:])
+	for _, tc := range []struct {
+		name, digest string
+		valid        bool
+	}{
+		{"uppercase", strings.ToUpper(digest), true},
+		{"empty", "", false}, {"short", digest[:63], false},
+		{"long", digest + "0", false}, {"nonhex", strings.Repeat("z", 64), false},
+		{"leading whitespace", " " + digest, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := VerifyArtifact(path, tc.digest)
+			if tc.valid {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if !errors.Is(err, ErrInvalidArtifact) {
+				t.Fatalf("error = %v, want ErrInvalidArtifact", err)
+			}
+		})
+	}
+	if err := VerifyArtifact(t.TempDir(), digest); !errors.Is(err, ErrInvalidArtifact) {
+		t.Fatalf("directory error = %v", err)
+	}
+}
+
+func TestVerifyArtifactAcceptsSizeBoundaries(t *testing.T) {
+	for _, size := range []int64{0, maxAdminerArtifactBytes} {
+		name := "empty"
+		if size != 0 {
+			name = "maximum"
+		}
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "adminer.php")
+			file, err := os.Create(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.Truncate(size); err != nil {
+				file.Close()
+				t.Fatal(err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			file, err = os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hash := sha256.New()
+			_, err = io.Copy(hash, file)
+			file.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := VerifyArtifact(path, hex.EncodeToString(hash.Sum(nil))); err != nil {
+				t.Fatalf("size %d: %v", size, err)
+			}
+		})
 	}
 }

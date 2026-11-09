@@ -173,7 +173,6 @@ func TestScopedHandlerRequiresLoopbackHostAndLiveSession(t *testing.T) {
 	}
 }
 
-
 func TestScopedHandlerRequiresSameOriginForStateChanges(t *testing.T) {
 	sessions := NewSessionStore()
 	token, err := sessions.create(LaunchScope{Kind: GlobalScope})
@@ -209,5 +208,157 @@ func TestScopedHandlerRequiresSameOriginForStateChanges(t *testing.T) {
 	}
 	if got := request(http.MethodGet, ""); got.Code != http.StatusNoContent {
 		t.Fatalf("GET without Origin status = %d, want 204", got.Code)
+	}
+}
+
+func TestExchangeRejectsInvalidBodiesWithoutConsumingTicket(t *testing.T) {
+	const host = "127.0.0.1:43127"
+	for _, tc := range []struct {
+		name, body, contentType string
+		status                  int
+	}{
+		{"empty", "", "application/json", 400},
+		{"missing ticket", `{}`, "application/json", 400},
+		{"null", `null`, "application/json", 400},
+		{"wrong type", `{"ticket":42}`, "application/json", 400},
+		{"truncated", `{"ticket":`, "application/json", 400},
+		{"unknown field", `{"ticket":"%s","password":"secret"}`, "application/json", 400},
+		{"second value", `{"ticket":"%s"} {}`, "application/json", 400},
+		{"trailing junk", `{"ticket":"%s"}!`, "application/json", 400},
+		{"oversized", `{"ticket":"%s","extra":"` + strings.Repeat("x", maxExchangeBody) + `"}`, "application/json", 400},
+		{"missing content type", `{"ticket":"%s"}`, "", 415},
+		{"wrong content type", `{"ticket":"%s"}`, "text/plain", 415},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tickets, sessions := NewTicketStore(), NewSessionStore()
+			ticket, err := tickets.Issue(LaunchScope{Kind: GlobalScope})
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler := ExchangeHandler(tickets, sessions, host)
+			req := httptest.NewRequest(http.MethodPost, "http://"+host+"/session/exchange", strings.NewReader(strings.ReplaceAll(tc.body, "%s", ticket)))
+			req.RemoteAddr = "127.0.0.1:1234"
+			req.Header.Set("Origin", "http://"+host)
+			req.Header.Set("Content-Type", tc.contentType)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			if response.Code != tc.status {
+				t.Fatalf("status = %d, want %d", response.Code, tc.status)
+			}
+			if len(response.Result().Cookies()) != 0 || len(sessions.sessions) != 0 {
+				t.Fatal("rejected request created a session")
+			}
+			if got := exchangeRequest(handler, host, "http://"+host, "127.0.0.1:1234", ticket); got.Code != http.StatusNoContent {
+				t.Fatalf("valid retry status = %d", got.Code)
+			}
+		})
+	}
+}
+
+func TestExchangeReplayDoesNotCreateAnotherSession(t *testing.T) {
+	tickets, sessions := NewTicketStore(), NewSessionStore()
+	ticket, err := tickets.Issue(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const host = "127.0.0.1:43127"
+	handler := ExchangeHandler(tickets, sessions, host)
+	for i, want := range []int{http.StatusNoContent, http.StatusUnauthorized} {
+		response := exchangeRequest(handler, host, "http://"+host, "127.0.0.1:1234", ticket)
+		if response.Code != want {
+			t.Fatalf("exchange %d status = %d, want %d", i, response.Code, want)
+		}
+		if i == 1 && len(response.Result().Cookies()) != 0 {
+			t.Fatal("replay set a cookie")
+		}
+	}
+	if len(sessions.sessions) != 1 {
+		t.Fatalf("sessions = %d, want 1", len(sessions.sessions))
+	}
+}
+
+func TestActiveSessionStillExpiresAtAbsoluteDeadline(t *testing.T) {
+	store := NewSessionStore()
+	start := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	now := start
+	store.now = func() time.Time { return now }
+	want := LaunchScope{Kind: SiteScope, SiteID: "site", ConnectionID: "db"}
+	token, err := store.create(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for now = start.Add(10 * time.Minute); now.Before(start.Add(sessionAbsoluteTTL)); now = now.Add(10 * time.Minute) {
+		if got, err := store.lookup(token); err != nil || got != want {
+			t.Fatalf("active lookup at %v = %#v, %v", now, got, err)
+		}
+	}
+	now = start.Add(sessionAbsoluteTTL - time.Nanosecond)
+	if _, err := store.lookup(token); err != nil {
+		t.Fatalf("before absolute deadline: %v", err)
+	}
+	now = start.Add(sessionAbsoluteTTL)
+	if _, err := store.lookup(token); err != ErrInvalidSession {
+		t.Fatalf("at absolute deadline: %v", err)
+	}
+	if len(store.sessions) != 0 {
+		t.Fatal("expired session retained")
+	}
+}
+
+func TestSessionIdleDeadlineRefreshesOnActivity(t *testing.T) {
+	store := NewSessionStore()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	token, err := store.create(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		now = now.Add(sessionIdleTTL - time.Nanosecond)
+		if _, err := store.lookup(token); err != nil {
+			t.Fatalf("active session expired: %v", err)
+		}
+	}
+	now = now.Add(sessionIdleTTL)
+	if _, err := store.lookup(token); err != ErrInvalidSession {
+		t.Fatalf("idle deadline error = %v", err)
+	}
+}
+
+func TestScopedHandlerOriginPolicy(t *testing.T) {
+	const host = "127.0.0.1:43127"
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, "CUSTOM"} {
+		for _, origin := range []string{"", "null", "http://attacker.example", "http://" + host + ", http://attacker.example", "http://" + host + "/", "https://" + host, "http://" + host} {
+			t.Run(method+"/"+origin, func(t *testing.T) {
+				sessions := NewSessionStore()
+				token, err := sessions.create(LaunchScope{Kind: GlobalScope})
+				if err != nil {
+					t.Fatal(err)
+				}
+				called := false
+				handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, _ *http.Request, scope LaunchScope) {
+					called = true
+					if scope != (LaunchScope{Kind: GlobalScope}) {
+						t.Errorf("scope = %#v", scope)
+					}
+					w.WriteHeader(http.StatusNoContent)
+				})
+				req := httptest.NewRequest(method, "http://"+host+"/", nil)
+				req.RemoteAddr = "127.0.0.1:1234"
+				req.Header.Set("Origin", origin)
+				req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, req)
+				safe := method == "GET" || method == "HEAD" || method == "OPTIONS" || method == "TRACE"
+				allowed := safe || origin == "http://"+host
+				want := http.StatusForbidden
+				if allowed {
+					want = http.StatusNoContent
+				}
+				if response.Code != want || called != allowed {
+					t.Fatalf("status = %d, called = %v; want %d, %v", response.Code, called, want, allowed)
+				}
+			})
+		}
 	}
 }

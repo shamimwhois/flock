@@ -1,6 +1,8 @@
 package databaseadmin
 
 import (
+	"encoding/base64"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -74,5 +76,56 @@ func TestTicketStoreAllowsOnlyOneConcurrentConsumer(t *testing.T) {
 
 	if got := successes.Load(); got != 1 {
 		t.Fatalf("successful consumers = %d, want 1", got)
+	}
+}
+
+func TestStoresRejectInvalidScopes(t *testing.T) {
+	for _, scope := range []LaunchScope{
+		{}, {Kind: "unknown"}, {Kind: GlobalScope, SiteID: "site"},
+		{Kind: GlobalScope, ConnectionID: "db"}, {Kind: SiteScope},
+		{Kind: SiteScope, SiteID: "site"}, {Kind: SiteScope, ConnectionID: "db"},
+	} {
+		t.Run(string(scope.Kind)+"/"+scope.SiteID+"/"+scope.ConnectionID, func(t *testing.T) {
+			tickets, sessions := NewTicketStore(), NewSessionStore()
+			if token, err := tickets.Issue(scope); token != "" || err != ErrInvalidScope {
+				t.Fatalf("Issue() = %q, %v", token, err)
+			}
+			if token, err := sessions.create(scope); token != "" || err != ErrInvalidScope {
+				t.Fatalf("create() = %q, %v", token, err)
+			}
+			if len(tickets.tickets) != 0 || len(sessions.sessions) != 0 {
+				t.Fatal("invalid scope created state")
+			}
+		})
+	}
+}
+
+func TestStoresRejectMalformedAndUnknownTokens(t *testing.T) {
+	tickets, sessions := NewTicketStore(), NewSessionStore()
+	for _, token := range []string{"", "!", strings.Repeat("a", 42), base64.RawURLEncoding.EncodeToString(make([]byte, 33)), base64.RawURLEncoding.EncodeToString(make([]byte, 32))} {
+		t.Run(token, func(t *testing.T) {
+			if scope, err := tickets.Consume(token); err != ErrInvalidTicket || scope != (LaunchScope{}) {
+				t.Fatalf("Consume() = %#v, %v", scope, err)
+			}
+			if scope, err := sessions.lookup(token); err != ErrInvalidSession || scope != (LaunchScope{}) {
+				t.Fatalf("lookup() = %#v, %v", scope, err)
+			}
+			sessions.revoke(token)
+		})
+	}
+}
+
+func TestTicketValidImmediatelyBeforeExpiry(t *testing.T) {
+	store := NewTicketStore()
+	now := time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)
+	store.now = func() time.Time { return now }
+	want := LaunchScope{Kind: GlobalScope}
+	token, err := store.Issue(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(launchTicketTTL - time.Nanosecond)
+	if got, err := store.Consume(token); err != nil || got != want {
+		t.Fatalf("Consume() = %#v, %v", got, err)
 	}
 }
