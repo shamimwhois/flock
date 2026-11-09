@@ -129,3 +129,18 @@ func TestTicketValidImmediatelyBeforeExpiry(t *testing.T) {
 		t.Fatalf("Consume() = %#v, %v", got, err)
 	}
 }
+
+func TestTicketStoreRejectsNonCanonicalBase64URL(t *testing.T) {
+	store := NewTicketStore()
+	canonical := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	nonCanonical := canonical[:len(canonical)-1] + "B" // non-zero unused trailing bits
+	if _, err := store.Consume(nonCanonical); err != ErrInvalidTicket {
+		t.Fatalf("Consume(non-canonical token) error = %v, want ErrInvalidTicket", err)
+	}
+	if _, ok := decodeOpaqueToken(canonical); !ok {
+		t.Fatal("canonical token was rejected")
+	}
+	if _, ok := decodeOpaqueToken(nonCanonical); ok {
+		t.Fatal("non-canonical token was accepted")
+	}
+}
