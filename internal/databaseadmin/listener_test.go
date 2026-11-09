@@ -12,8 +12,9 @@ import (
 
 func TestStartRuntimeBindsLoopbackAndServesHandler(t *testing.T) {
 	runtime, err := StartRuntime(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Host != runtimeHost(r) {
-			t.Errorf("unexpected Host: %q", r.Host)
+		peer, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil || net.ParseIP(peer) == nil || !net.ParseIP(peer).IsLoopback() {
+			t.Errorf("request peer is not loopback: %q", r.RemoteAddr)
 		}
 		_, _ = io.WriteString(w, "ready")
 	}))
@@ -47,8 +48,6 @@ func TestStartRuntimeBindsLoopbackAndServesHandler(t *testing.T) {
 		t.Fatalf("got status %d and body %q", response.StatusCode, body)
 	}
 }
-
-func runtimeHost(r *http.Request) string { return r.Host }
 
 func TestStartRuntimeRejectsNilHandler(t *testing.T) {
 	if _, err := StartRuntime(nil); err == nil {
