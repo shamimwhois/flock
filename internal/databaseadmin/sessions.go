@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -176,6 +177,13 @@ func ScopedHandler(sessions *SessionStore, expectedHost string, next func(http.R
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		// Fail closed on connection identity in the browser URL. This is defense in
+		// depth; the pinned Adminer compatibility patch must also prevent emitting
+		// these fields in links, forms and redirects.
+		if hasConnectionIdentityQuery(r.URL.RawQuery) {
+			http.Error(w, "connection identity is not accepted in the URL", http.StatusBadRequest)
+			return
+		}
 		if requiresOriginCheck(r.Method) && !validOrigin(r, expectedHost) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -187,6 +195,28 @@ func ScopedHandler(sessions *SessionStore, expectedHost string, next func(http.R
 		}
 		next(w, r, scope)
 	})
+}
+
+// hasConnectionIdentityQuery rejects Adminer routing and credential fields from
+// query strings while preserving ordinary page navigation such as ?table=users.
+func hasConnectionIdentityQuery(rawQuery string) bool {
+	values, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return true
+	}
+	for key := range values {
+		normalized := strings.ToLower(strings.NewReplacer("[", "", "]", "", "_", "", "-", "").Replace(key))
+		for _, identity := range []string{
+			"username", "password", "server", "driver", "dsn", "ticket",
+			"connectionid", "profileid", "mysql", "pgsql", "sqlite", "mssql",
+			"oracle", "db", "ns",
+		} {
+			if normalized == identity || strings.HasSuffix(normalized, identity) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func isLoopbackRequest(r *http.Request) bool {
