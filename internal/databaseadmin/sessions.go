@@ -64,8 +64,7 @@ func (s *SessionStore) create(scope LaunchScope) (string, error) {
 }
 
 func (s *SessionStore) lookup(token string) (LaunchScope, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(raw) != 32 {
+	if _, ok := decodeOpaqueToken(token); !ok {
 		return LaunchScope{}, ErrInvalidSession
 	}
 	digest := sha256.Sum256([]byte(token))
@@ -86,8 +85,7 @@ func (s *SessionStore) lookup(token string) (LaunchScope, error) {
 }
 
 func (s *SessionStore) revoke(token string) {
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(raw) != 32 {
+	if _, ok := decodeOpaqueToken(token); !ok {
 		return
 	}
 	digest := sha256.Sum256([]byte(token))
