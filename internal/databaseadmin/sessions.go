@@ -1,10 +1,10 @@
 package databaseadmin
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -17,10 +17,10 @@ import (
 )
 
 const (
-	sessionCookieName = "flock_dbadmin_session"
-	sessionIdleTTL    = 15 * time.Minute
+	sessionCookieName  = "flock_dbadmin_session"
+	sessionIdleTTL     = 15 * time.Minute
 	sessionAbsoluteTTL = 2 * time.Hour
-	maxExchangeBody   = 4 << 10
+	maxExchangeBody    = 4 << 10
 )
 
 var ErrInvalidSession = errors.New("invalid or expired database admin session")
