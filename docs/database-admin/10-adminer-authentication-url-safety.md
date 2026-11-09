@@ -150,3 +150,12 @@ The Go loopback session boundary now rejects Adminer request URLs containing con
 Ordinary Adminer navigation parameters such as 'table', 'select', 'sql', 'dump' and 'script' remain permitted. The guard is deliberately fail-closed: a stock Adminer login URL will be rejected rather than silently accepted.
 
 This is **inbound request hardening only**. It does not rewrite or validate Adminer's generated HTML links, form actions, JavaScript navigation, or 'Location' headers. It is not the pinned Adminer compatibility patch and does not close Phase 0. The source-level patch and executable tests against the exact 6.3.0 source fixture remain mandatory.
+
+
+## 10A. Site-scoped login POST isolation
+
+The authenticated Go request boundary now distinguishes global and site-scoped sessions after resolving the server-side session scope. For a site-scoped session, an Adminer form-urlencoded POST containing the generic `auth` payload is rejected with HTTP 403. This prevents the browser's generic Adminer login form from replacing the selected site's driver, server, username or database. Global sessions continue to accept the generic Adminer login POST.
+
+The guard restores the original request body before dispatch so ordinary site-scoped Adminer POST actions retain their payload. Malformed or over-limit form bodies fail closed for site-scoped requests. Regression tests cover site login override rejection, ordinary POST body preservation, and global generic login acceptance.
+
+This remains a request-boundary safeguard, not the Adminer compatibility patch. It does not supply a connection to Adminer, patch its bootstrap/authentication flow, or prove generated HTML and redirects are identity-free. The pinned-source compatibility work and end-to-end tests remain open.
