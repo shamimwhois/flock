@@ -49,10 +49,11 @@ func VerifyArtifact(path, expectedSHA256 string) error {
 	}
 
 	hash := sha256.New()
-	if _, err := io.Copy(hash, io.LimitReader(file, maxAdminerArtifactBytes+1)); err != nil {
+	n, err := io.Copy(hash, io.LimitReader(file, maxAdminerArtifactBytes+1))
+	if err != nil {
 		return fmt.Errorf("%w: hash file: %v", ErrInvalidArtifact, err)
 	}
-	if after.Size() > maxAdminerArtifactBytes {
+	if n > maxAdminerArtifactBytes || after.Size() > maxAdminerArtifactBytes {
 		return fmt.Errorf("%w: artifact exceeds size limit", ErrInvalidArtifact)
 	}
 	if subtle.ConstantTimeCompare(hash.Sum(nil), expected) != 1 {
