@@ -173,7 +173,7 @@ func RevokeSession(sessions *SessionStore, w http.ResponseWriter, r *http.Reques
 // listener Host, and carries a live server-side session. The scope is supplied out-of-band.
 func ScopedHandler(sessions *SessionStore, expectedHost string, next func(http.ResponseWriter, *http.Request, LaunchScope)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		setSecurityHeaders(w)
+		setAdminerSecurityHeaders(w)
 		if !isLoopbackRequest(r) || r.Host != expectedHost {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
@@ -229,4 +229,13 @@ func setSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+}
+
+// setAdminerSecurityHeaders applies a same-origin-only policy to the authenticated Adminer
+// surface. Adminer currently emits inline scripts and styles, so those are allowed only for
+// this isolated loopback origin; remote scripts, frames, connections and form targets remain
+// blocked. The Flock compatibility patch must keep all generated URLs same-origin.
+func setAdminerSecurityHeaders(w http.ResponseWriter) {
+	setSecurityHeaders(w)
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
 }
