@@ -178,6 +178,10 @@ func ScopedHandler(sessions *SessionStore, expectedHost string, next func(http.R
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if requiresOriginCheck(r.Method) && !validOrigin(r, expectedHost) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		scope, err := SessionScope(sessions, r)
 		if err != nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -194,6 +198,17 @@ func isLoopbackRequest(r *http.Request) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+
+// requiresOriginCheck identifies methods that can change server-side state.
+func requiresOriginCheck(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+		return false
+	default:
+		return true
+	}
 }
 
 func validOrigin(r *http.Request, expectedHost string) bool {
