@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "component": "Adminer",
+  "version": "6.3.0",
+  "upstream": {
+    "repository": "https://github.com/vrana/adminer",
+    "commit": "6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1",
+    "commit_url": "https://github.com/vrana/adminer/commit/6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1",
+    "license": "Apache-2.0 OR GPL-2.0-only"
+  },
+  "source_files": [
+    {
+      "path": "adminer/index.php",
+      "git_blob_sha1": "15e7db8466910fa26e558b6ae17b09ac62f8c279",
+      "purpose": "Entrypoint and bootstrap ordering"
+    },
+    {
+      "path": "adminer/include/bootstrap.inc.php",
+      "git_blob_sha1": "21bab3970ae4a3e698bfb001449217b01fe903dc",
+      "purpose": "Session initialization and SERVER, DB, ME constants"
+    },
+    {
+      "path": "adminer/include/auth.inc.php",
+      "git_blob_sha1": "0fe8d1f4d511cbc81b8c72fa6c37dee1e0da029f",
+      "purpose": "Login, logout, session authentication and connection gate"
+    },
+    {
+      "path": "adminer/include/functions.inc.php",
+      "git_blob_sha1": "f75b5ed7c56c26811fcb5cf143393074692b3486",
+      "purpose": "auth_url, redirect, URI and session helpers"
+    },
+    {
+      "path": "adminer/include/adminer.inc.php",
+      "git_blob_sha1": "cade31af38a110142faf4c34f7ac2a4877f27518",
+      "purpose": "Default credentials and login form implementation"
+    },
+    {
+      "path": "adminer/include/connect.inc.php",
+      "git_blob_sha1": "3844059cc2f6fd1cbba476dbf1b24bc495004e0b",
+      "purpose": "Database selection and navigation"
+    }
+  ],
+  "artifact": {
+    "sha256": null,
+    "status": "not-yet-pinned",
+    "note": "The source commit and Git blob IDs do not establish the SHA-256 of the downloaded release artifact. Do not package or execute an artifact until its exact bytes have a separately reviewed SHA-256."
+  },
+  "compatibility_patch": {
+    "status": "not-implemented",
+    "required_before_runtime_enablement": true,
+    "must_patch_before": [
+      "Adminer\\SERVER",
+      "Adminer\\DB",
+      "Adminer\\ME"
+    ],
+    "must_cover": [
+      "bootstrap context resolution",
+      "auth gate and credentials",
+      "auth_url and all redirects",
+      "generated navigation links and form actions",
+      "logout and session revocation",
+      "global generic login versus site-scoped login"
+    ]
+  }
+}
