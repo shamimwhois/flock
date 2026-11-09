@@ -225,8 +225,16 @@ func hasAdminerAuthPost(r *http.Request) bool {
 	if err != nil {
 		return true
 	}
-	_, present := values["auth"]
-	return present
+	// PHP parses fields such as auth[driver] into $_POST["auth"]. Go's
+	// url.ParseQuery preserves the literal bracketed key, so checking only
+	// values["auth"] would miss Adminer's actual login form payload.
+	for key := range values {
+		normalized := strings.ToLower(key)
+		if normalized == "auth" || strings.HasPrefix(normalized, "auth[") {
+			return true
+		}
+	}
+	return false
 }
 
 // hasConnectionIdentityQuery rejects Adminer routing and credential fields from
