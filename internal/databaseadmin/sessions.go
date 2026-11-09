@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -213,10 +214,18 @@ func hasAdminerAuthPost(r *http.Request) bool {
 	if mediaType != "application/x-www-form-urlencoded" {
 		return false
 	}
-	if err := r.ParseForm(); err != nil {
+	const maxInspectBody = 64 << 20
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxInspectBody+1))
+	if err != nil || len(body) > maxInspectBody {
+		r.Body = io.NopCloser(bytes.NewReader(body))
 		return true
 	}
-	_, present := r.PostForm["auth"]
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	values, err := url.ParseQuery(string(body))
+	if err != nil {
+		return true
+	}
+	_, present := values["auth"]
 	return present
 }
 
