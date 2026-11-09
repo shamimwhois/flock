@@ -2,12 +2,12 @@ package databaseadmin
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 )
 
 const maxAdminerArtifactBytes int64 = 32 << 20
@@ -55,7 +55,7 @@ func VerifyArtifact(path, expectedSHA256 string) error {
 	if after.Size() > maxAdminerArtifactBytes {
 		return fmt.Errorf("%w: artifact exceeds size limit", ErrInvalidArtifact)
 	}
-	if !strings.EqualFold(hex.EncodeToString(hash.Sum(nil)), hex.EncodeToString(expected)) {
+	if subtle.ConstantTimeCompare(hash.Sum(nil), expected) != 1 {
 		return fmt.Errorf("%w: SHA-256 mismatch", ErrInvalidArtifact)
 	}
 	return nil
