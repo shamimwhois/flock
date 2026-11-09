@@ -73,6 +73,32 @@ The pinned Adminer integration must provide a server-side request context with t
 9. User-supplied Adminer URLs, query parameters or form fields cannot override the server-side site/connection scope.
 10. Adminer state-changing POST requests retain upstream CSRF checks; Flock additionally validates exact Host, Origin and loopback peer.
 
+## 5A. Additional exact source findings (2026-11-09)
+
+The pinned source review was extended to the bootstrap and default Adminer class. The following details are confirmed at commit `6f95564e80f24a2a024a9cb9aee40cfd0aca8eb1`:
+
+- `adminer/index.php` includes `include/bootstrap.inc.php` before dispatching page handlers.
+- `bootstrap.inc.php` starts the Adminer PHP session, loads the driver implementations, then defines:
+  - `SERVER` from `$_GET[DRIVER]`
+  - `DB` from `$_GET["db"]`
+  - `ME` from `relative_uri()` plus driver/server, username and database query fields when present.
+- The same bootstrap includes `include/auth.inc.php` and `include/connect.inc.php` after those constants are defined. A compatibility layer added only after bootstrap cannot safely change these constants.
+- The stock `Adminer::credentials()` returns `array(SERVER, $_GET["username"], get_password())`.
+- The stock login form emits driver, server, username and database inputs. Hiding the form with CSS is not an authorization boundary.
+- `auth_url()` explicitly reconstructs driver/server/username/database parameters. It must be replaced or bypassed in the pinned integration.
+- `connect.inc.php` and page handlers use the `DB` constant and request parameters. It is not enough to patch only the first authentication redirect.
+- Asset paths are generally rooted at `DIR`, while application navigation is built from `ME`; both must be checked in the final artifact.
+
+### Consequence for patch placement
+
+The compatibility hook must execute **before the stock bootstrap defines `SERVER`, `DB` and `ME`**, or the pinned bootstrap itself must be narrowly patched. The patch must establish a validated server-side request context before Adminer resolves its driver and connection.
+
+For a site-scoped session, the request context must be authoritative and immutable for that request. Browser query/form values must not be able to replace the selected site or connection. The integration must also audit every helper that copies request parameters into hidden form fields or generated URLs; a clean initial address bar alone is insufficient.
+
+For global mode, the integration must leave Adminer's generic login flow available while ensuring that login submission and subsequent authenticated navigation do not persist connection identity in URLs. The global and site-scoped modes therefore need explicit, separately tested behavior rather than one shared implicit fallback.
+
+No source patch is committed by this documentation update. The next code change must include the pinned upstream source fixture, a minimal patch, and executable tests against that exact source revision.
+
 ## 6. Preferred implementation seam
 
 Prefer a narrow maintained patch at the Adminer integration boundary over maintaining a broad fork:
