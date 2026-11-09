@@ -1,10 +1,10 @@
 # Database Admin — Planning & Design Pack
 
-Status: **Planning baseline — implementation not started**
+Status: **Incremental security foundation implemented; Adminer runtime integration remains gated**
 Repository: Flock
 Branch: `feature/database-admin-panel-security-hardening`
 
-This document set defines the product behavior, UI/UX, backend architecture, platform integration, security boundaries, file-by-file implementation responsibilities and validation plan for the Database Admin feature.
+This document set defines the product behavior, UI/UX, backend architecture, platform integration, security boundaries, file-by-file implementation responsibilities and validation plan for the Database Admin feature. The current branch contains the one-time ticket/session primitives, dedicated loopback listener, scoped request checks, logout handling, artifact verifier and Adminer login-override protections. It does not yet serve Adminer or integrate a PHP/FastCGI runtime.
 
 ## Product decision
 
@@ -28,7 +28,7 @@ A per-site launch must never silently fall back to the global login or another s
 | [Testing & delivery plan](./07-testing-and-delivery.md) | Test matrix, CI gates and rollout phases |
 | [Technical feasibility](./08-technical-feasibility.md) | Existing PHP runtime, Adminer packaging, platform constraints and Phase 0 proof-of-concept gates |
 | [Runtime design decision](./09-runtime-design-decision.md) | Source-verified PHP/FastCGI capabilities, selected isolated runtime direction and remaining proof gates |
-| [Adminer authentication & URL safety](./10-adminer-authentication-url-safety.md) | Upstream authentication flow, URL leakage constraint, required compatibility patch and regression tests |
+| [Adminer authentication & URL safety](./10-adminer-authentication-url-safety.md) | Upstream authentication flow, URL leakage constraint, required compatibility patch and regression tests |\n| [Adminer 6.3.0 source pin](./adminer-6.3.0-source-pin.json) | Exact upstream commit and reviewed Git blob IDs for the authentication/bootstrap source files; artifact SHA-256 remains unpinned |
 
 ## Existing repository integration points inspected
 
@@ -51,4 +51,4 @@ These are integration points, not proof that the proposed files already exist. A
 7. All administration traffic is loopback-only and excluded from public site sharing/tunnels.
 8. Global launch and per-site launch are separate intents, even if they reuse the same local runtime.
 9. No database, query or mutation API is exposed through the general Flock daemon API. The admin tool communicates directly with the database over its own constrained local session.
-10. This pack is planning only. No Go, Swift, C# or Rust implementation is claimed complete.
+10. The security foundation is incremental, not a usable Database Admin feature yet. No Adminer runtime is wired, no PHP/FastCGI bridge is active, and no end-to-end database administration workflow is claimed complete.
