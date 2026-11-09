@@ -86,8 +86,7 @@ func (s *TicketStore) Issue(scope LaunchScope) (string, error) {
 
 // Consume atomically validates and consumes a ticket. A ticket can succeed exactly once.
 func (s *TicketStore) Consume(token string) (LaunchScope, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(raw) != 32 {
+	if _, ok := decodeOpaqueToken(token); !ok {
 		return LaunchScope{}, ErrInvalidTicket
 	}
 	digest := sha256.Sum256([]byte(token))
