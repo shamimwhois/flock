@@ -193,8 +193,31 @@ func ScopedHandler(sessions *SessionStore, expectedHost string, next func(http.R
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
+		if scope.Kind == SiteScope && hasAdminerAuthPost(r) {
+			http.Error(w, "site connection identity cannot be changed by the browser", http.StatusForbidden)
+			return
+		}
 		next(w, r, scope)
 	})
+}
+
+
+// hasAdminerAuthPost detects Adminer's generic login payload. Site-scoped sessions
+// receive their connection from server-side scope and must not accept browser-selected
+// driver/server/username/database fields. Global sessions retain the generic login flow.
+func hasAdminerAuthPost(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0]))
+	if mediaType != "application/x-www-form-urlencoded" {
+		return false
+	}
+	if err := r.ParseForm(); err != nil {
+		return true
+	}
+	_, present := r.PostForm["auth"]
+	return present
 }
 
 // hasConnectionIdentityQuery rejects Adminer routing and credential fields from
