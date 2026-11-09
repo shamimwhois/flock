@@ -166,6 +166,11 @@ func TestScopedHandlerRequiresLoopbackHostAndLiveSession(t *testing.T) {
 	if got := request(host, "127.0.0.1:54321", token); got.Code != http.StatusNoContent || servedScope != scope {
 		t.Fatalf("authorized request = %d, scope %#v", got.Code, servedScope)
 	}
+	authorized := request(host, "127.0.0.1:54321", token)
+	csp := authorized.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "default-src 'self'") || !strings.Contains(csp, "form-action 'self'") || !strings.Contains(csp, "object-src 'none'") {
+		t.Fatalf("Adminer CSP is missing same-origin restrictions: %q", csp)
+	}
 }
 
 
