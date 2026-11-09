@@ -22,9 +22,9 @@ const (
 // Runtime owns the dedicated loopback-only HTTP listener used by database administration.
 // It is intentionally separate from Flock's public site proxy and sharing listeners.
 type Runtime struct {
-	listener net.Listener
-	server   *http.Server
-	serveErr chan error
+	listener  net.Listener
+	server    *http.Server
+	serveErr  chan error
 	closeOnce sync.Once
 }
 
