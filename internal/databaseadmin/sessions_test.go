@@ -173,6 +173,66 @@ func TestScopedHandlerRequiresLoopbackHostAndLiveSession(t *testing.T) {
 	}
 }
 
+func TestScopedHandlerRejectsConnectionIdentityInQuery(t *testing.T) {
+	sessions := NewSessionStore()
+	token, err := sessions.create(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const host = "127.0.0.1:43134"
+	handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, _ *http.Request, _ LaunchScope) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	for _, query := range []string{
+		"username=admin",
+		"db=production",
+		"ns=private",
+		"mysql=db.internal",
+		"pgsql=db.internal",
+		"auth%5Busername%5D=admin",
+		"auth%5Bdb%5D=production",
+		"connection_id=secret",
+		"profile-id=secret",
+		"password=secret",
+		"ticket=secret",
+		"malformed=%zz",
+	} {
+		t.Run(query, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "http://"+host+"/?"+query, nil)
+			req.RemoteAddr = "127.0.0.1:54321"
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("query %q status = %d, want 400", query, response.Code)
+			}
+		})
+	}
+}
+
+func TestScopedHandlerAllowsOrdinaryAdminerNavigationQuery(t *testing.T) {
+	sessions := NewSessionStore()
+	token, err := sessions.create(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const host = "127.0.0.1:43135"
+	handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, _ *http.Request, _ LaunchScope) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	for _, query := range []string{"table=users", "select=users", "sql=", "dump=users", "script=connect"} {
+		req := httptest.NewRequest(http.MethodGet, "http://"+host+"/?"+query, nil)
+		req.RemoteAddr = "127.0.0.1:54321"
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		if response.Code != http.StatusNoContent {
+			t.Errorf("ordinary query %q status = %d, want 204", query, response.Code)
+		}
+	}
+}
+
 func TestScopedHandlerRequiresSameOriginForStateChanges(t *testing.T) {
 	sessions := NewSessionStore()
 	token, err := sessions.create(LaunchScope{Kind: GlobalScope})
