@@ -167,3 +167,11 @@ A follow-up review found that Adminer's actual login controls are named `auth[dr
 The site-session guard now detects both a literal `auth` key and any `auth[...` key (case-insensitively). The existing regression payloads use URL-encoded bracketed field names, so they exercise the actual Adminer form shape. Global scope still bypasses this site-only restriction.
 
 This correction closes a false-negative in the earlier request-boundary check. It does not change the Phase 0 status: the pinned Adminer bootstrap/auth patch and generated-navigation tests are still required.
+
+## 10C. Multipart login override rejection
+
+The site-scoped request guard now inspects both URL-encoded and multipart form submissions. Adminer's login fields are normally URL-encoded, but PHP also populates `$_POST` from multipart forms; checking only one encoding would leave an alternate request path.
+
+For both form encodings, the guard detects `auth` and `auth[...]` field names. Multipart parsing is bounded by the same 64 MiB inspection limit, malformed or missing-boundary multipart submissions fail closed, and the original request body is restored before ordinary downstream handling. Regression tests cover a multipart login override, malformed multipart input, and preservation of a normal multipart Adminer POST body.
+
+This is still defense-in-depth at the Go request boundary. It does not replace the required pinned Adminer source patch or prove clean generated navigation.
