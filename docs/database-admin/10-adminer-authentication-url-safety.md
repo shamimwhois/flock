@@ -159,3 +159,11 @@ The authenticated Go request boundary now distinguishes global and site-scoped s
 The guard restores the original request body before dispatch so ordinary site-scoped Adminer POST actions retain their payload. Malformed or over-limit form bodies fail closed for site-scoped requests. Regression tests cover site login override rejection, ordinary POST body preservation, and global generic login acceptance.
 
 This remains a request-boundary safeguard, not the Adminer compatibility patch. It does not supply a connection to Adminer, patch its bootstrap/authentication flow, or prove generated HTML and redirects are identity-free. The pinned-source compatibility work and end-to-end tests remain open.
+
+## 10B. PHP bracketed login-field parsing correction
+
+A follow-up review found that Adminer's actual login controls are named `auth[driver]`, `auth[server]`, `auth[username]`, `auth[password]` and `auth[db]`. Go's `url.ParseQuery` preserves those as literal bracketed keys; it does not produce a top-level `auth` map like PHP's request parser does.
+
+The site-session guard now detects both a literal `auth` key and any `auth[...` key (case-insensitively). The existing regression payloads use URL-encoded bracketed field names, so they exercise the actual Adminer form shape. Global scope still bypasses this site-only restriction.
+
+This correction closes a false-negative in the earlier request-boundary check. It does not change the Phase 0 status: the pinned Adminer bootstrap/auth patch and generated-navigation tests are still required.
