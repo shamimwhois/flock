@@ -141,3 +141,12 @@ While the Adminer patch remains blocked on a full pinned-source fixture, the exi
 - Regression tests cover non-canonical trailing bits for both token types.
 
 This prevents alternate textual encodings from being treated as valid opaque-token representations and keeps ticket/session parsing rules identical. It does **not** replace the outstanding Adminer clean-URL compatibility patch or the required runtime integration tests.
+
+
+## 10. Request-boundary identity rejection
+
+The Go loopback session boundary now rejects Adminer request URLs containing connection-identity fields before dispatching to the Adminer handler. The check is case-insensitive, rejects malformed query encoding, and covers the upstream driver keys ('mysql', 'pgsql', 'sqlite', 'mssql', 'oracle'), 'username', 'server', 'db', 'ns', and sensitive handoff fields such as 'ticket', 'password', 'connection_id' and 'profile_id'. It also rejects bracketed form-style aliases such as 'auth[username]'.
+
+Ordinary Adminer navigation parameters such as 'table', 'select', 'sql', 'dump' and 'script' remain permitted. The guard is deliberately fail-closed: a stock Adminer login URL will be rejected rather than silently accepted.
+
+This is **inbound request hardening only**. It does not rewrite or validate Adminer's generated HTML links, form actions, JavaScript navigation, or 'Location' headers. It is not the pinned Adminer compatibility patch and does not close Phase 0. The source-level patch and executable tests against the exact 6.3.0 source fixture remain mandatory.
