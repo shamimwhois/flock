@@ -1,6 +1,7 @@
 package databaseadmin
 
 import (
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
