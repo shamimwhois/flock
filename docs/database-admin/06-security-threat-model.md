@@ -59,6 +59,7 @@
 - Redact structured logs by field name and by known secret value.
 - Do not return driver error strings; map to stable safe error codes.
 - Do not expose DB passwords through MCP tools by default.
+- Apply a dedicated Adminer CSP on authenticated panel responses: same-origin assets/forms/connections only, no frames or objects, and no external origins. The current compatibility allowance for inline Adminer scripts/styles is a temporary, documented trade-off; replace it with nonce/hash-based script/style policy when the reviewed Adminer patch can support it.
 
 ## 6. Local attacker assumptions
 
