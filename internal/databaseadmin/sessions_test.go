@@ -362,3 +362,16 @@ func TestScopedHandlerOriginPolicy(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionStoreRejectsNonCanonicalBase64URL(t *testing.T) {
+	store := NewSessionStore()
+	canonical := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	nonCanonical := canonical[:len(canonical)-1] + "B" // non-zero unused trailing bits
+	if _, err := store.lookup(nonCanonical); err != ErrInvalidSession {
+		t.Fatalf("lookup(non-canonical token) error = %v, want ErrInvalidSession", err)
+	}
+	store.revoke(nonCanonical)
+	if len(store.sessions) != 0 {
+		t.Fatal("non-canonical token changed session state")
+	}
+}
