@@ -167,3 +167,42 @@ func TestScopedHandlerRequiresLoopbackHostAndLiveSession(t *testing.T) {
 		t.Fatalf("authorized request = %d, scope %#v", got.Code, servedScope)
 	}
 }
+
+
+func TestScopedHandlerRequiresSameOriginForStateChanges(t *testing.T) {
+	sessions := NewSessionStore()
+	token, err := sessions.create(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const host = "127.0.0.1:43133"
+	handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, _ *http.Request, _ LaunchScope) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	request := func(method, origin string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, "http://"+host+"/", nil)
+		req.Host = host
+		req.RemoteAddr = "127.0.0.1:54321"
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	if got := request(http.MethodPost, ""); got.Code != http.StatusForbidden {
+		t.Fatalf("missing Origin status = %d, want 403", got.Code)
+	}
+	if got := request(http.MethodPost, "http://attacker.example"); got.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin POST status = %d, want 403", got.Code)
+	}
+	if got := request(http.MethodPost, "http://"+host); got.Code != http.StatusNoContent {
+		t.Fatalf("same-origin POST status = %d, want 204", got.Code)
+	}
+	if got := request(http.MethodGet, ""); got.Code != http.StatusNoContent {
+		t.Fatalf("GET without Origin status = %d, want 204", got.Code)
+	}
+}
