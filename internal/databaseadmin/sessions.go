@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
@@ -210,10 +212,21 @@ func hasAdminerAuthPost(r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		return false
 	}
-	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0]))
-	if mediaType != "application/x-www-form-urlencoded" {
+	contentType := r.Header.Get("Content-Type")
+	mediaType, params, parseErr := mime.ParseMediaType(contentType)
+	if parseErr != nil {
+		// A malformed declaration that claims to be a form must not bypass
+		// the site-scope login override guard.
+		if strings.HasPrefix(strings.ToLower(contentType), "application/x-www-form-urlencoded") ||
+			strings.HasPrefix(strings.ToLower(contentType), "multipart/form-data") {
+			return true
+		}
 		return false
 	}
+	if mediaType != "application/x-www-form-urlencoded" && mediaType != "multipart/form-data" {
+		return false
+	}
+
 	const maxInspectBody = 64 << 20
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxInspectBody+1))
 	if err != nil || len(body) > maxInspectBody {
@@ -221,20 +234,53 @@ func hasAdminerAuthPost(r *http.Request) bool {
 		return true
 	}
 	r.Body = io.NopCloser(bytes.NewReader(body))
-	values, err := url.ParseQuery(string(body))
-	if err != nil {
+
+	if mediaType == "application/x-www-form-urlencoded" {
+		values, err := url.ParseQuery(string(body))
+		if err != nil {
+			return true
+		}
+		for key := range values {
+			if isAdminerAuthField(key) {
+				return true
+			}
+		}
+		return false
+	}
+
+	boundary := params["boundary"]
+	if boundary == "" {
 		return true
 	}
-	// PHP parses fields such as auth[driver] into $_POST["auth"]. Go's
-	// url.ParseQuery preserves the literal bracketed key, so checking only
-	// values["auth"] would miss Adminer's actual login form payload.
-	for key := range values {
-		normalized := strings.ToLower(key)
-		if normalized == "auth" || strings.HasPrefix(normalized, "auth[") {
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			return false
+		}
+		if err != nil {
+			return true
+		}
+		fieldName := part.FormName()
+		if isAdminerAuthField(fieldName) {
+			_ = part.Close()
+			return true
+		}
+		if _, err := io.Copy(io.Discard, part); err != nil {
+			_ = part.Close()
+			return true
+		}
+		if err := part.Close(); err != nil {
 			return true
 		}
 	}
-	return false
+}
+
+// isAdminerAuthField recognizes PHP's bracketed Adminer login field names.
+// Go's query parser preserves brackets while PHP groups them under $_POST["auth"].
+func isAdminerAuthField(key string) bool {
+	normalized := strings.ToLower(key)
+	return normalized == "auth" || strings.HasPrefix(normalized, "auth[")
 }
 
 // hasConnectionIdentityQuery rejects Adminer routing and credential fields from
