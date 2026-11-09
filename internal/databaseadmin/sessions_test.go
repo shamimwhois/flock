@@ -1,6 +1,7 @@
 package databaseadmin
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -208,6 +209,77 @@ func TestScopedHandlerRejectsConnectionIdentityInQuery(t *testing.T) {
 				t.Fatalf("query %q status = %d, want 400", query, response.Code)
 			}
 		})
+	}
+}
+
+func TestSiteScopedHandlerRejectsAdminerLoginOverrideAndPreservesOtherPostBodies(t *testing.T) {
+	const host = "127.0.0.1:43136"
+	for _, tc := range []struct {
+		name, body string
+		want        int
+	}{
+		{"auth override", "auth%5Bdriver%5D=mysql&auth%5Bserver%5D=attacker&auth%5Busername%5D=root&auth%5Bdb%5D=other", http.StatusForbidden},
+		{"ordinary adminer post", "token=123&query=SELECT+1", http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sessions := NewSessionStore()
+			token, err := sessions.create(LaunchScope{Kind: SiteScope, SiteID: "site-a", ConnectionID: "mysql-a"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var gotBody string
+			handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, r *http.Request, _ LaunchScope) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Errorf("read downstream body: %v", err)
+				}
+				gotBody = string(body)
+				w.WriteHeader(http.StatusNoContent)
+			})
+			req := httptest.NewRequest(http.MethodPost, "http://"+host+"/", strings.NewReader(tc.body))
+			req.RemoteAddr = "127.0.0.1:54321"
+			req.Header.Set("Origin", "http://"+host)
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			if response.Code != tc.want {
+				t.Fatalf("status = %d, want %d", response.Code, tc.want)
+			}
+			if tc.want == http.StatusNoContent && gotBody != tc.body {
+				t.Fatalf("downstream body = %q, want original %q", gotBody, tc.body)
+			}
+		})
+	}
+}
+
+func TestGlobalScopedHandlerAllowsGenericAdminerLogin(t *testing.T) {
+	const host = "127.0.0.1:43137"
+	sessions := NewSessionStore()
+	token, err := sessions.create(LaunchScope{Kind: GlobalScope})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "auth%5Bdriver%5D=mysql&auth%5Bserver%5D=db.example&auth%5Busername%5D=admin"
+	handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, r *http.Request, _ LaunchScope) {
+		got, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read downstream body: %v", err)
+		}
+		if string(got) != body {
+			t.Errorf("body = %q, want %q", got, body)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	req := httptest.NewRequest(http.MethodPost, "http://"+host+"/", strings.NewReader(body))
+	req.RemoteAddr = "127.0.0.1:54321"
+	req.Header.Set("Origin", "http://"+host)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("global login status = %d, want 204", response.Code)
 	}
 }
 
