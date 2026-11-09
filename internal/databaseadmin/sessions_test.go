@@ -219,6 +219,7 @@ func TestSiteScopedHandlerRejectsAdminerLoginOverrideAndPreservesOtherPostBodies
 		want        int
 	}{
 		{"auth override", "auth%5Bdriver%5D=mysql&auth%5Bserver%5D=attacker&auth%5Busername%5D=root&auth%5Bdb%5D=other", http.StatusForbidden},
+		{"malformed form body", "auth%5Busername%5D=%zz", http.StatusForbidden},
 		{"ordinary adminer post", "token=123&query=SELECT+1", http.StatusNoContent},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
