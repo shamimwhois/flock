@@ -509,3 +509,61 @@ func TestSessionStoreRejectsNonCanonicalBase64URL(t *testing.T) {
 		t.Fatal("non-canonical token changed session state")
 	}
 }
+
+func TestSiteScopedHandlerRejectsMultipartAdminerLoginOverride(t *testing.T) {
+	const host = "127.0.0.1:43138"
+	const boundary = "flock-adminer-test"
+	for _, tc := range []struct {
+		name, contentType, body string
+		want                   int
+	}{
+		{
+			name:        "auth field",
+			contentType: "multipart/form-data; boundary=" + boundary,
+			body:        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"auth[driver]\"\r\n\r\nmysql\r\n--" + boundary + "--\r\n",
+			want:        http.StatusForbidden,
+		},
+		{
+			name:        "ordinary field",
+			contentType: "multipart/form-data; boundary=" + boundary,
+			body:        "--" + boundary + "\r\nContent-Disposition: form-data; name=\"query\"\r\n\r\nSELECT 1\r\n--" + boundary + "--\r\n",
+			want:        http.StatusNoContent,
+		},
+		{
+			name:        "missing boundary",
+			contentType: "multipart/form-data",
+			body:        "not-a-valid-multipart-body",
+			want:        http.StatusForbidden,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sessions := NewSessionStore()
+			token, err := sessions.create(LaunchScope{Kind: SiteScope, SiteID: "site-a", ConnectionID: "mysql-a"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var gotBody string
+			handler := ScopedHandler(sessions, host, func(w http.ResponseWriter, r *http.Request, _ LaunchScope) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					t.Errorf("read downstream body: %v", err)
+				}
+				gotBody = string(body)
+				w.WriteHeader(http.StatusNoContent)
+			})
+			req := httptest.NewRequest(http.MethodPost, "http://"+host+"/", strings.NewReader(tc.body))
+			req.RemoteAddr = "127.0.0.1:54321"
+			req.Header.Set("Origin", "http://"+host)
+			req.Header.Set("Content-Type", tc.contentType)
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, req)
+			if response.Code != tc.want {
+				t.Fatalf("status = %d, want %d", response.Code, tc.want)
+			}
+			if tc.want == http.StatusNoContent && gotBody != tc.body {
+				t.Fatalf("downstream body = %q, want original %q", gotBody, tc.body)
+			}
+		})
+	}
+}
