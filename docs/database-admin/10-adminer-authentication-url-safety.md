@@ -130,3 +130,14 @@ A plugin-only solution may be accepted only if a proof test demonstrates all of 
 The exact 6.3.0 source review confirms a **material integration constraint**. The previously proposed generic one-time ticket exchange is still valid, but the Adminer handoff must not rely on stock query-string login or a credentials-only plugin.
 
 Phase 0 remains open. No Adminer patch, runtime prototype or integration test has been executed in this pass. Before implementation, build the smallest compatibility patch against the pinned source, then run the clean-URL/session-isolation regression tests on the resulting artifact.
+
+
+## 9. Adjacent token-input hardening (2026-11-09)
+
+While the Adminer patch remains blocked on a full pinned-source fixture, the existing Go launch-ticket and browser-session primitives received a small independent hardening change:
+
+- Both ticket consumption and session lookup/revocation now accept only canonical, unpadded base64url encodings of exactly 32 bytes.
+- Decoding uses strict trailing-bit validation and verifies a round-trip re-encoding before hashing or touching stored state.
+- Regression tests cover non-canonical trailing bits for both token types.
+
+This prevents alternate textual encodings from being treated as valid opaque-token representations and keeps ticket/session parsing rules identical. It does **not** replace the outstanding Adminer clean-URL compatibility patch or the required runtime integration tests.
